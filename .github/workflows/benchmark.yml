@@ -1,0 +1,45 @@
+name: buffer-benchmarks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Full run (3 forks, 5 warmup + 10 measurement iterations of 1s). Default: quick smoke run.'
+        type: boolean
+        default: false
+
+jobs:
+  jmh:
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['21', '25']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build benchmark jar
+        run: ./gradlew --no-daemon jmhJar
+
+      - name: Run benchmarks (quick)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.full) }}
+        run: java -jar build/libs/*-jmh.jar -f 1 -wi 3 -i 5 -rf json -rff results-jdk${{ matrix.java }}.json
+
+      - name: Run benchmarks (full)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.full }}
+        run: java -jar build/libs/*-jmh.jar -rf json -rff results-jdk${{ matrix.java }}.json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmh-results-jdk${{ matrix.java }}
+          path: results-jdk${{ matrix.java }}.json
